@@ -7,6 +7,10 @@ Currently set up for controlling torso, neck, and upper arm articulation.
 1. [Arduino 1.6.8](https://www.arduino.cc)
 2. [Teensyduino](https://www.pjrc.com/teensy/teensyduino.html)
 
+### Software Libraries/Dependencies
+1. [BioloidSerial - Controlling Dynamixels with the Teensy](https://github.com/KurtE/BioloidSerial)
+2. [OSC - OSC communication with the Teensy](https://github.com/CNMAT/OSC)
+
 ## Hardware
 1. [Microcontroller - Teensy 3.2](https://www.pjrc.com/store/teensy32.html)
 2. [Servo - Dynamixel MX-64T](http://www.trossenrobotics.com/p/mx-64t-dynamixel-robot-actuator.aspx)
