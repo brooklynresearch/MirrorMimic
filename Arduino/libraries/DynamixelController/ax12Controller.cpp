@@ -17,7 +17,7 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include "ax12Serial.h"
+#include "ax12Controller.h"
 #ifndef __ARDUINO_X86__
 #include <avr/io.h>
 #endif 
