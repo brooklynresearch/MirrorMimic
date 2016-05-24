@@ -1,5 +1,7 @@
-#include <ax12Serial.h>
-#include <BioloidSerial.h>
+#include <ax12Controller.h>
+#include <DynamixelController.h>
+
+#define SERIALCOMMANDDEBUG 1
 
 //#define HALF_ARM
 #define FULL_ARM
@@ -38,84 +40,189 @@ int servoID[NUM_SERVOS] = {
 };
 // Global objects
 /* IK Engine */
-BioloidControllerEx bioloid = BioloidControllerEx();  // may use or not... may go direct to AX12
+DynamixelController dynaControl = DynamixelController();  // may use or not... may go direct to AX12
+#define SERIALCOMMAND Serial2
+
+
+#define SERIALCOMMANDBUFFER 256
+#define MAXSERIALCOMMANDS  10
+#define MAXDELIMETER 2
+#define SERIALBAUDRATE 115200
+
+char inChar;          // A character read from the serial stream 
+char serialBuffer[SERIALCOMMANDBUFFER];   // Buffer of stored characters while waiting for terminator character
+int  bufPos;                        // Current position in the buffer
+char delim[MAXDELIMETER];           // null-terminated list of character to be used as delimeters for tokenizing (default " ")
+char terminator = '\r';                          // Character that signals end of command (default '\r')
+char *token;                        // Returned token from the command buffer as returned by strtok_r
+char *last;                         // State variable used by strtok_r during processing
+typedef struct _callback {
+  char serialCommand[SERIALCOMMANDBUFFER];
+  void (*function)();
+} SerialCommandCallback;            // Data structure to hold Command/Handler function key-value pairs
+int numCommand;
+SerialCommandCallback CommandList[MAXSERIALCOMMANDS];   // Actual definition for command/handler array
+void (*defaultHandler)();   
 
 // other globals.
-word           g_wVoltage;
+int            g_wVoltage;
 char           g_aszCmdLine[80];
 uint8_t        g_iszCmdLine;
 boolean        g_fTrackServos = false;
 
 // Values to use for servo position...
-byte          g_bServoID;
-word          g_wServoGoalPos;
-word          g_wServoGoalSpeed;
+int            g_bServoID;
+int            g_wServoGoalPos;
+int            g_wServoGoalSpeed;
+
+int defaultSpeed  =   200;
+
+
 
 //====================================================================================================
 // Setup 
 //====================================================================================================
 void setup() {
-  Serial.begin(9600);  // start off the serial port.  
-  bioloid.poseSize = NUM_SERVOS;
-  bioloid.begin(1000000, &Serial1, -1);
+  SERIALCOMMAND.begin(115200);  // start off the serial port. 
+  Serial.begin(9600);
+  //Set the direction Pin to -1 for half duplex control on the Teensy 
+  dynaControl.begin(1000000, &Serial1, -1);
+  strncpy(delim," ",MAXDELIMETER);  // strtok_r needs a null-terminated string
+  numCommand=0;    // Number of callback handlers installed
+  clearSerialBuffer();
 
-  delay(1000);
-  Serial.print("System Voltage in 10ths: ");
-  Serial.println(ax12GetRegister(servoID[0], AX_PRESENT_VOLTAGE, 1));
-//  Serial.println(g_wVoltage = ax12GetRegister(PTEST_ID, AX_PRESENT_VOLTAGE, 1), DEC);
+  addSerialCommand("HELLO", SayHello);
   
-  pinMode(7, OUTPUT);
-  digitalWrite(7, HIGH);
+  delay(1000);
   for(int i=0; i<NUM_SERVOS; i++){
-    SetServoSpeed(servoID[i],500);
+      dynaControl.setServoSpeed(servoID[i], defaultSpeed);
+      SERIALCOMMAND.print("SERVO ");SERIALCOMMAND.print(servoID[i]);
+      SERIALCOMMAND.print("\t\tVOLTAGE: ");SERIALCOMMAND.print(((float)dynaControl.getServoVoltage(servoID[i])/10));
+      SERIALCOMMAND.print("\tTEMP: ");SERIALCOMMAND.print(dynaControl.getServoTemp(servoID[i]));
+      SERIALCOMMAND.print("\tPOS: ");SERIALCOMMAND.print(dynaControl.getServoPosition(servoID[i]));
+      SERIALCOMMAND.print("\tSPEED: ");SERIALCOMMAND.println(dynaControl.getServoSpeed(servoID[i]));
   }
+  
+
 }
 
 void loop() {
-  int newRandomShoulderPosition = (int)random(1000,2000);
-  int newRandomElbowPosition = (int)random(2048);
-//  int newRandomSpeed = (int)random(1000);
-  //Serial.print("Move To: ");Serial.print(newRandomPosition);Serial.print("\tWith Speed: ");Serial.println(newRandomSpeed);
-  Serial.print("ELBOW_L Success: ");Serial.println(SetServoPosition(ELBOW_L, newRandomElbowPosition));
-  Serial.print("ELBOW_H Success: ");Serial.println(SetServoPosition(ELBOW_H, newRandomElbowPosition));
-  Serial.print("SHOULDER Success: ");Serial.println(SetDualServoPosition(SHOULDER_L, SHOULDER_R, newRandomShoulderPosition)); 
-  for(int i=0; i<NUM_SERVOS; i++){
-      Serial.print("SERVO ");Serial.print(i+1);Serial.print(": ");Serial.println(GetServoPosition(servoID[i]));
+    readSerialCommand();
+}
+
+void SayHello()
+{
+  char *arg;  
+  arg = nextArgument();    // Get the next argument from the SerialCommand object buffer
+  if (arg != NULL)      // As long as it existed, take it
+  {
+    SERIALCOMMAND.print("Hello "); 
+    SERIALCOMMAND.println(arg); 
+  } 
+  else {
+    SERIALCOMMAND.println("Hello, whoever you are"); 
   }
-  Serial.println();
-  delay(5000);
 }
 
-int GetServoPosition(int id){
-  return ax12GetRegister(id, AX_PRESENT_POSITION_L, 2);
-}
-void SetServoSpeed(word id, word spd){
-  ax12SetRegister2(id, AX_GOAL_SPEED_L, spd);
+void readSerialCommand() 
+{
+ // If we're using the Hardware port, check it.   Otherwise check the user-created SoftwareSerial Port
+  while (SERIALCOMMAND.available() > 0) 
+  {
+    int i; 
+    boolean matched; 
+    inChar = SERIALCOMMAND.read();   // Read single available character, there may be more waiting
+    #ifdef SERIALCOMMANDDEBUG
+    SERIALCOMMAND.print(inChar);   // Echo back to serial stream
+    #endif
+    if (inChar == terminator) {     // Check for the terminator (default '\r') meaning end of command
+      #ifdef SERIALCOMMANDDEBUG
+      SERIALCOMMAND.print("Received: "); 
+      SERIALCOMMAND.println(serialBuffer);
+        #endif
+      bufPos=0;           // Reset to start of buffer
+      token = strtok_r(serialBuffer,delim,&last);   // Search for command at start of buffer
+      if (token == NULL) return; 
+      matched=false; 
+      for (i=0; i<numCommand; i++) {
+        #ifdef SERIALCOMMANDDEBUG
+        SERIALCOMMAND.print("Comparing ["); 
+        SERIALCOMMAND.print(token); 
+        SERIALCOMMAND.print("] to [");
+        SERIALCOMMAND.print(CommandList[i].serialCommand);
+        SERIALCOMMAND.println("]");
+        #endif
+        // Compare the found command against the list of known commands for a match
+        if (strncmp(token,CommandList[i].serialCommand,SERIALCOMMANDBUFFER) == 0) 
+        {
+          #ifdef SERIALCOMMANDDEBUG
+          SERIALCOMMAND.print("Matched Command: "); 
+          SERIALCOMMAND.println(token);
+          #endif
+          // Execute the stored handler function for the command
+          (*CommandList[i].function)(); 
+          clearSerialBuffer(); 
+          matched=true; 
+          break; 
+        }
+      }
+      if (matched==false) {
+        (*defaultHandler)(); 
+        clearSerialBuffer(); 
+      }
+
+    }
+    if (isprint(inChar))   // Only printable characters into the buffer
+    {
+      serialBuffer[bufPos++]=inChar;   // Put character into buffer
+      serialBuffer[bufPos]='\0';  // Null terminate
+      if (bufPos > SERIALCOMMANDBUFFER-1) bufPos=0; // wrap buffer around if full  
+    }
+  }
 }
 
-int SetServoPosition(word id, word pos){
-  ax12SetRegister2(id, AX_GOAL_POSITION_L, pos);
-  return ax12ReadPacket(6);
+void addSerialCommand(const char *command, void (*function)())
+{
+ if (numCommand < MAXSERIALCOMMANDS) {
+    #ifdef SERIALCOMMANDDEBUG
+    SERIALCOMMAND.print(numCommand); 
+    SERIALCOMMAND.print("-"); 
+    SERIALCOMMAND.print("Adding command for "); 
+    SERIALCOMMAND.println(command); 
+    #endif
+    
+    strncpy(CommandList[numCommand].serialCommand,command,SERIALCOMMANDBUFFER); 
+    CommandList[numCommand].function = function; 
+    numCommand++; 
+  } else {
+    // In this case, you tried to push more commands into the buffer than it is compiled to hold.  
+    // Not much we can do since there is no real visible error assertion, we just ignore adding
+    // the command
+    #ifdef SERIALCOMMANDDEBUG
+    SERIALCOMMAND.println("Too many handlers - recompile changing MAXSERIALCOMMANDS"); 
+    #endif 
+  }
 }
 
-int SetServoPosition(word id, word pos, word spd){
-   ax12SetRegister2(id, AX_GOAL_SPEED_L, spd);
-   ax12SetRegister2(id, AX_GOAL_POSITION_L, pos);
-   return ax12ReadPacket(6);
+char *nextArgument() 
+{
+ char *nextToken;
+  nextToken = strtok_r(NULL, delim, &last); 
+  return nextToken; 
 }
 
-int SetDualServoPosition(word id_1, word id_2, word pos){
-  ax12SetRegister2(id_1, AX_GOAL_POSITION_L, pos);
-  ax12SetRegister2(id_2, AX_GOAL_POSITION_L, pos);
-  return ax12ReadPacket(6);
+void clearSerialBuffer()
+{
+  for (int i=0; i<SERIALCOMMANDBUFFER; i++) 
+  {
+    serialBuffer[i]='\0';
+  }
+  bufPos=0; 
 }
 
-int SetDualServoPosition(word id_1, word id_2, word pos, word spd){
-  ax12SetRegister2(id_1, AX_GOAL_SPEED_L, spd);
-  ax12SetRegister2(id_2, AX_GOAL_SPEED_L, spd);
-  ax12SetRegister2(id_1, AX_GOAL_POSITION_L, pos);
-  ax12SetRegister2(id_2, AX_GOAL_POSITION_L, pos);
-  return ax12ReadPacket(6);
+void addDefaultHandler(void (*function)())
+{
+  defaultHandler = function;
 }
- 
+
 

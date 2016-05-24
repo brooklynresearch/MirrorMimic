@@ -8,7 +8,7 @@ Currently set up for controlling torso, neck, and upper arm articulation.
 2. [Teensyduino](https://www.pjrc.com/teensy/teensyduino.html)
 
 ### Software Libraries/Dependencies
-1. [BioloidSerial - Controlling Dynamixels with the Teensy](https://github.com/KurtE/BioloidSerial)
+1. DynamixelController - Controlling Dynamixels with the Teensy (Based on Arbotix Library)
 2. [OSC - OSC communication with the Teensy](https://github.com/CNMAT/OSC)
 
 ## Hardware
