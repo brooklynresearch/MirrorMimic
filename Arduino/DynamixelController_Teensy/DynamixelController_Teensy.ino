@@ -86,7 +86,7 @@ void setup() {
   SERIALCOMMAND.begin(115200);  // start off the serial port. 
   Serial.begin(9600);
   //Set the direction Pin to -1 for half duplex control on the Teensy 
-  dynaControl.begin(1000000, &Serial1, -1);
+  dynaControl.begin(1000000, &Serial1, -1, NUM_SERVOS);
   strncpy(delim," ",MAXDELIMETER);  // strtok_r needs a null-terminated string
   numCommand=0;    // Number of callback handlers installed
   clearSerialBuffer();
@@ -100,9 +100,15 @@ void setup() {
       SERIALCOMMAND.print("\t\tVOLTAGE: ");SERIALCOMMAND.print(((float)dynaControl.getServoVoltage(servoID[i])/10));
       SERIALCOMMAND.print("\tTEMP: ");SERIALCOMMAND.print(dynaControl.getServoTemp(servoID[i]));
       SERIALCOMMAND.print("\tPOS: ");SERIALCOMMAND.print(dynaControl.getServoPosition(servoID[i]));
-      SERIALCOMMAND.print("\tSPEED: ");SERIALCOMMAND.println(dynaControl.getServoSpeed(servoID[i]));
+      SERIALCOMMAND.print("\tSPEED: ");SERIALCOMMAND.print(dynaControl.getServoSpeed(servoID[i]));
+      SERIALCOMMAND.print("\t\tMAX ANGLES: ");
+      int *p;
+      p = dynaControl.getAngleLimits(servoID[i]);
+        for(int j=0; j<2; j++){
+          SERIALCOMMAND.print(*(p + j));SERIALCOMMAND.print("  ");
+        }
+      SERIALCOMMAND.println();
   }
-  
 
 }
 

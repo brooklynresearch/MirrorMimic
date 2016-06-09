@@ -23,26 +23,38 @@
 class DynamixelController
 {
   public:
+    uint8_t maxServos;
+    int** angleLimits_;
     /* For compatibility with legacy code */
     // Changed to two step init...
     DynamixelController();               // baud usually 1000000
     void begin(long baud=1000000, Stream* pstream = (Stream*)PAX12Serial, int direction_pin = -1);
+    void begin(long baud, Stream* pstream, int direction_pin, int max);
 
-    int getServoPosition(int id);				// get the position of a particular servo
-    int getServoVoltage(int id);        // get the voltage of a particular servo
-    int getServoTemp(int id);           // get the temperature of a particular servo
-    int getServoSpeed(int id);          // get the set speed of a particular servo
+    int getServoPosition(int id);				            // get the position of a particular servo
+    int getServoVoltage(int id);                    // get the voltage of a particular servo
+    int getServoTemp(int id);                       // get the temperature of a particular servo
+    int getServoSpeed(int id);                      // get the set speed of a particular servo
+    int getServoTorque(int id);                     // get the Max Torque of a particular servo
+    int * getAngleLimits(int id);
 
-    void setServoSpeed(int id, int spd);		// set the speed of a particular servo
+    void setServoSpeed(int id, int spd);		        // set the speed of a particular servo
+    void setMaxTorque(int id, int trq);             // set Max Torque of a particular servo
+    int setCWAngleLimit(int id, int ang);           // set Max Angle for Clockwise Movement
+    int setCCWAngleLimit(int id, int ang);          // set Max Angle for Counter Clockwise Movement
+    int setAngleLimits(int id, int ang1, int ang2);  // set Max Angle for both Clockwise and Counter Clockwise Movement
 
     int setServoPosition(int id, int pos);
     int setServoPosition(int id, int pos, int spd);
     int setDualServoPosition(int id_1, int id_2, int pos);
     int setDualServoPosition(int id_1, int id_2, int pos, int spd);
 
-    void waitForMoveToComplete(int id);
+    int goHome(int id);                             // have a particular servo go to it's home position
+
+    int waitForMoveToComplete(int id);
 
   private:  
+    int angleInfo = 2;
     unsigned int * pose_;                       // the current pose, updated by Step(), set out by Sync()
     unsigned int * nextpose_;                   // the destination pose, where we put on load
     int * speed_;                               // speeds for interpolation 
