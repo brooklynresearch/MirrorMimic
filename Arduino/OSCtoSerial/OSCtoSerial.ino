@@ -11,6 +11,7 @@
 #define HEADSERIAL    Serial1
 #define LEFTSERIAL    Serial2
 #define RIGHTSERIAL   Serial3
+
 #define HEAD          0
 #define LEFTSIDE      1
 #define RIGHTSIDE     2
@@ -57,7 +58,6 @@ void read_mac() {}
 #endif
 
 //outgoing messages
-
 OSCBundle bundleOUT;
 
 //converts the pin to an osc address
@@ -94,6 +94,7 @@ void setup() {
 }
 
 void loop(){ 
+  
    OSCMessage newMes;
    int size;
  
@@ -107,17 +108,47 @@ void loop(){
 
         if(!newMes.hasError())
         {
-            newMes.route("/move", routeMessage);
+            newMes.route("/move", routePositionMessage);
+            newMes.route("/get", routeGetMessage);
         }     
     }
 }
 
-void routeMessage(OSCMessage &msg, int addrOffset){
+void routeGetMessage(OSCMessage &msg, int addrOffset){
       int pinMatched;
+
+      //Test OSC Routing
       pinMatched = msg.match("/test", addrOffset);
       if(pinMatched){
-        Serial.println("OSC Comms Functional");
+        Serial.println("OSC \"/get\" Comms Functional");
       }
+
+      pinMatched = msg.match("/allPos", addrOffset);
+      if(pinMatched){
+        getAllPositions();
+      }
+
+      pinMatched = msg.match("/head", addrOffset);
+      if(pinMatched){
+        whichPort = HEAD;
+        if (msg.fullMatch("/rotate", pinMatched+addrOffset)){
+          messageAddress = "H_ROT";
+        } else if (msg.fullMatch("/pivot", pinMatched+addrOffset)){
+          messageAddress = "H_PIV";
+        }
+      }
+      
+}
+
+void routePositionMessage(OSCMessage &msg, int addrOffset){
+      int pinMatched;
+
+      //Test OSC Routing
+      pinMatched = msg.match("/test", addrOffset);
+      if(pinMatched){
+        Serial.println("OSC \"/move\" Comms Functional");
+      }
+      
       pinMatched = msg.match("/head", addrOffset);
       if(pinMatched){
         whichPort = HEAD;
@@ -161,15 +192,17 @@ void routeMessage(OSCMessage &msg, int addrOffset){
           messageAddress = "S_PIV";
         } 
       }
+
+      // DEBUG message for what route was sent
       #ifdef DEBUG
       Serial.print("Message Sent: ");Serial.println(messageAddress);
       #endif
       moveToPosition(msg, addrOffset, whichPort, messageAddress);
 }
-// same format for all for right now, but  we may need to make specific conditions
-// may also make more sense in a more generalized way to process
-void printAddrOffset(OSCMessage &msg, int addrOffset){
-  Serial.print("Address Offset: ");Serial.print(addrOffset);
+
+void getAllPositions(){
+  //do something
+  Serial.print("THIS NEEDS TO BE IMPLEMENTED");
 }
 
 void moveToPosition(OSCMessage &msg, int addrOffset, int portNumber, String addr){

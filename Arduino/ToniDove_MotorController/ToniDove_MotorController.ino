@@ -8,13 +8,14 @@
 // Define HALF_ARM, FULL_ARM, or NECK to setup up configuration and amount of servos and steppers.
 
 //#define HALF_ARM
-#define FULL_ARM
-//#define NECK
+//#define FULL_ARM
+#define NECK
 
 #ifdef HALF_ARM
 #define SHOULDER_L  1
 #define SHOULDER_R  2
 #define NUM_SERVOS   2
+String CONTROLLERNAME = "RIGHT ARM";
 #endif
 
 #ifdef FULL_ARM
@@ -23,12 +24,14 @@
 #define ELBOW_R     3
 #define ELBOW_P     4
 #define NUM_SERVOS   4
+String CONTROLLERNAME = "LEFT ARM";
 #endif
 
 #ifdef NECK
 #define NECK_R      1
 #define NECK_P      2
 #define NUM_SERVOS   2
+String CONTROLLERNAME = "NECK AND WAIST";
 #endif
 
 int servoID[NUM_SERVOS] = {
@@ -136,9 +139,14 @@ void setup() {
   pinMode(dirpin, OUTPUT);
   pinMode(steppin, OUTPUT);
 
+  Serial.println(F("====================================================================="));
+  Serial.print(F("TONI DOVE :: "));Serial.print(CONTROLLERNAME);Serial.println(" CONTROLLER");
+  Serial.println(F("====================================================================="));
+
   findHome();
   
   delay(1000);
+  
   for(int i=0; i<NUM_SERVOS; i++){
       dynaControl.setServoSpeed(servoID[i], defaultSpeed);
       SERIALCOMMAND.print("SERVO ");SERIALCOMMAND.print(servoID[i]);
