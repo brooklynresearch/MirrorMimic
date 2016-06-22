@@ -24,6 +24,7 @@ EthernetUDP Udp;
 
 //the Arduino's IP
 IPAddress ip(192, 168, 0, 200);
+IPAddress outIp(192, 168, 0, 126);
 
 //port numbers
 const unsigned int inPort = 12345;
@@ -128,16 +129,9 @@ void routeGetMessage(OSCMessage &msg, int addrOffset){
         getAllPositions();
       }
 
-      pinMatched = msg.match("/head", addrOffset);
-      if(pinMatched){
-        whichPort = HEAD;
-        if (msg.fullMatch("/rotate", pinMatched+addrOffset)){
-          messageAddress = "H_ROT";
-        } else if (msg.fullMatch("/pivot", pinMatched+addrOffset)){
-          messageAddress = "H_PIV";
-        }
-      }
-      
+      #ifdef DEBUG
+      Serial.print("Message Sent: ");Serial.println(messageAddress);
+      #endif
 }
 
 void routePositionMessage(OSCMessage &msg, int addrOffset){
@@ -201,13 +195,38 @@ void routePositionMessage(OSCMessage &msg, int addrOffset){
 }
 
 void getAllPositions(){
+  char c;
+  char positionString[128];
+  char positionAddr[10] = "/motorPos";
+  int  p = 0;
   //do something
-  Serial.print("THIS NEEDS TO BE IMPLEMENTED");
+  for(int i=0; i<3; i++){
+    motorCommPort[i].println("GET_POS");
+    while(motorCommPort[i].available() > 0){
+      c = motorCommPort[i].read();
+      positionString[p] = c;
+      p++;
+    }
+  }
+  #ifdef DEBUG
+  Serial.print("Motor Positions: ");Serial.println(positionString);
+  #endif
+  sendOSCString(positionAddr, positionString);
 }
+
+void sendOSCString(char* outgoingAddr, char* argument){
+  OSCMessage msg(outgoingAddr);
+  msg.add(argument);
+  Udp.beginPacket(outIp, outPort);
+  msg.send(Udp);
+  Udp.endPacket();
+  msg.empty();
+}
+
+
 
 void moveToPosition(OSCMessage &msg, int addrOffset, int portNumber, String addr){
   int nextPosition = 0;
-  int newSpeed = 0;
   char OSCAddress[40];
   bool valid = true;
 

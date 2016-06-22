@@ -106,7 +106,7 @@ void setup() {
   
   
   SERIALCOMMAND.begin(115200);  // start off the serial port. 
-  Serial.begin(9600);
+  Serial.begin(9600);  // debug serial port
   
   //Set the direction Pin to -1 for half duplex control on the Teensy 
   dynaControl.begin(1000000, &Serial1, -1, NUM_SERVOS);
@@ -139,28 +139,29 @@ void setup() {
   pinMode(dirpin, OUTPUT);
   pinMode(steppin, OUTPUT);
 
+  delay(1000);
+
   Serial.println(F("====================================================================="));
   Serial.print(F("TONI DOVE :: "));Serial.print(CONTROLLERNAME);Serial.println(" CONTROLLER");
   Serial.println(F("====================================================================="));
 
-  findHome();
-  
-  delay(1000);
+  //findHome();
+  //delay(1000);
   
   for(int i=0; i<NUM_SERVOS; i++){
       dynaControl.setServoSpeed(servoID[i], defaultSpeed);
-      SERIALCOMMAND.print("SERVO ");SERIALCOMMAND.print(servoID[i]);
-      SERIALCOMMAND.print("\t\tVOLTAGE: ");SERIALCOMMAND.print(((float)dynaControl.getServoVoltage(servoID[i])/10));
-      SERIALCOMMAND.print("\tTEMP: ");SERIALCOMMAND.print(dynaControl.getServoTemp(servoID[i]));
-      SERIALCOMMAND.print("\tPOS: ");SERIALCOMMAND.print(dynaControl.getServoPosition(servoID[i]));
-      SERIALCOMMAND.print("\tSPEED: ");SERIALCOMMAND.print(dynaControl.getServoSpeed(servoID[i]));
-      SERIALCOMMAND.print("\t\tMAX ANGLES: ");
+      Serial.print("SERVO ");Serial.print(servoID[i]);
+      Serial.print("\t\tVOLTAGE: ");Serial.print(((float)dynaControl.getServoVoltage(servoID[i])/10));
+      Serial.print("\tTEMP: ");Serial.print(dynaControl.getServoTemp(servoID[i]));
+      Serial.print("\tPOS: ");Serial.print(dynaControl.getServoPosition(servoID[i]));
+      Serial.print("\tSPEED: ");Serial.print(dynaControl.getServoSpeed(servoID[i]));
+      Serial.print("\t\tMAX ANGLES: ");
       int *p;
       p = dynaControl.getAngleLimits(servoID[i]);
         for(int j=0; j<2; j++){
-          SERIALCOMMAND.print(*(p + j));SERIALCOMMAND.print("  ");
+          Serial.print(*(p + j));Serial.print("  ");
         }
-      SERIALCOMMAND.println();
+      Serial.println();
   }
 }
 
@@ -344,7 +345,16 @@ void pivotElbow(){
 #endif
 
 void getAllMotorPositions(){
-  SERIALCOMMAND.println(getShoulderPosition());
+  SERIALCOMMAND.print(getShoulderPosition());
+  for(int i=0; i<NUM_SERVOS; i++){
+    SERIALCOMMAND.print(", ");
+    SERIALCOMMAND.print(dynaControl.getServoPosition(servoID[i]));
+  }
+  #ifdef HALF_ARM
+  SERIALCOMMAND.println();
+  #else
+  SERIALCOMMAND.print(", ");
+  #endif
 }
 
 int getShoulderPosition(){
@@ -427,13 +437,17 @@ void pulseStepper(){
   digitalWrite(steppin, LOW);
   digitalWrite(steppin, HIGH);
 }
+
+
 void serialMotorTest()
 {
   int i;
 
   digitalWrite(dirpin, LOW);     // Set the direction.
 
+  #ifdef DEBUG
   Serial.println("Moving Forward");
+  #endif
   for (i = 0; i<1000; i++)       // Iterate for 4000 microsteps.
   {
     digitalWrite(steppin, LOW);  // This LOW to HIGH change is what creates the
@@ -444,7 +458,10 @@ void serialMotorTest()
   digitalWrite(dirpin, HIGH);    // Change direction.
   delay(2000);
 
+  #ifdef DEBUG
   Serial.println("Moving Backward");
+  #endif
+  
   for (i = 0; i<1000; i++)       // Iterate for 4000 microsteps
   {
     digitalWrite(steppin, LOW);  // This LOW to HIGH change is what creates the
