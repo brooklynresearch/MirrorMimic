@@ -8,8 +8,8 @@
 //====================================================================================================
 // Define HALF_ARM, FULL_ARM, or NECK to setup up configuration and amount of servos and steppers.
 
-#define HALF_ARM
-//#define FULL_ARM
+//#define HALF_ARM
+#define FULL_ARM
 //#define NECK
 
 #ifdef HALF_ARM
@@ -48,6 +48,8 @@ String CONTROLLERNAME = "NECK AND WAIST";
 #define DOWNWARDS 0
 #endif
 
+#define MASTER_ADDRESS    5
+
 int servoID[NUM_SERVOS] = {
 #ifdef HALF_ARM
   SHOULDER_L, SHOULDER_R
@@ -64,7 +66,7 @@ int servoID[NUM_SERVOS] = {
 // Dynamixel Setup
 //====================================================================================================
 DynamixelController dynaControl = DynamixelController();  // Initialize the Dynamixel Controller
-
+#define MAX_TORQUE 1023
 
 //====================================================================================================
 // Serial Callback Command Setup
@@ -114,6 +116,9 @@ int sensorPin0 = A0;    // select the input pin for the potentiometer
 int sensorPin1 = A1;
 int sensorValue = 0;  // variable to store the value coming from the sensor
 int limitThreshold = 100;
+int curPosition = 0;
+int prevPosition = curPosition;
+bool firstTime = true;
 
 #ifdef HALF_ARM
 int stepperPosition = 0;
@@ -124,7 +129,7 @@ int stepperPosition = 0;
 #endif
 
 #ifdef NECK
-int stepperPosition = 1024;
+int stepperPosition = 0;
 #endif
 
 int newPosition = HOMEPOS;
@@ -139,12 +144,12 @@ unsigned int stepperInterval = 300;
 #endif
 
 #ifdef NECK
-unsigned int stepperInterval = 350;
+unsigned int stepperInterval = 300;
 #endif
 
 int stepDirection = UPWARDS;
 
-int defaultSpeed  =   200;
+int defaultSpeed  =   100;
 
 void setup() {
   
@@ -158,21 +163,31 @@ void setup() {
   numCommand=0;    // Number of callback handlers installed
   clearI2CBuffer();
 
-  addI2CCommand("HELLO", SayHello);
-  addI2CCommand("TEST",  serialMotorTest);
+//  addI2CCommand("HELLO", SayHello);
+//  addI2CCommand("TEST",  serialMotorTest);
   
   #ifdef NECK
   addI2CCommand("H_ROT", rotateHead);
   addI2CCommand("H_PIV", pivotHead);
+  addI2CCommand("HRPOS", getHeadRotatePos);
+  addI2CCommand("HPPOS", getHeadPivotPos);
+  addI2CCommand("H_RST", resetHead);
   addI2CCommand("W_ROT", rotateWaist);
+  addI2CCommand("W_POS", getWaistPos);
   #else
   addI2CCommand("S_ROT", rotateShoulder);
   addI2CCommand("S_PIV", pivotShoulder);
+  addI2CCommand("SRPOS", getShoulderRotatePos);
+  addI2CCommand("SPPOS", getShoulderPivotPos);
+  addI2CCommand("S_RST", resetShoulder);
   #endif
 
   #ifdef FULL_ARM
   addI2CCommand("E_ROT", rotateElbow);
   addI2CCommand("E_PIV", pivotElbow);
+  addI2CCommand("ERPOS", getElbowRotatePos);
+  addI2CCommand("EPPOS", getElbowPivotPos);
+  addI2CCommand("E_RST", resetElbow);
   #endif
   
   addI2CCommand("A_POS", getAllMotorPositions);
@@ -180,6 +195,7 @@ void setup() {
 
   Wire.begin(I2CADDRESS);                // join i2c bus with address #8
   Wire.onReceive(receiveEvent); // register event
+  Wire.onRequest(respondEvent); // callback event
 
   pinMode(dirpin, OUTPUT);
   pinMode(steppin, OUTPUT);
@@ -191,10 +207,17 @@ void setup() {
   Serial.println(F("====================================================================="));
 
   //serialMotorTest();
+  #ifdef NECK
+  stepperPosition = HOMEPOS;
+  curPosition = HOMEPOS;  
+  Serial.print("Stepper Position: ");Serial.println(stepperPosition);
+  #else
   findHome();
+  #endif
   delay(1000);
   
   for(int i=0; i<NUM_SERVOS; i++){
+      dynaControl.resetServoTorqueLimit(servoID[i], MAX_TORQUE);
       dynaControl.setServoSpeed(servoID[i], defaultSpeed);
       Serial.print("SERVO ");Serial.print(servoID[i]);
       Serial.print("\t\tVOLTAGE: ");Serial.print(((float)dynaControl.getServoVoltage(servoID[i])/10));
@@ -255,6 +278,8 @@ void findHome(){
     //digitalWrite(dirpin,LOW);
     
     while(moveStepperToPosition(HOMEPOS));
+
+    curPosition = HOMEPOS;
     
     Serial.print("Stepper Position: ");Serial.println(stepperPosition);
   } else {
@@ -275,6 +300,7 @@ bool checkSensor(int sensorPin){
   
   return sensorState;
 }
+
 
 #ifdef NECK
 void rotateHead(){
@@ -311,6 +337,22 @@ void pivotHead(){
   }
 }
 
+void getHeadRotatePos(){
+  curPosition = dynaControl.getServoPosition(NECK_R);
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("SHOULDER PIVOT POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void getHeadPivotPos(){
+  curPosition = dynaControl.getServoPosition(NECK_P);
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("SHOULDER PIVOT POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
 void rotateWaist(){
   char *arg;  
   arg = nextArgument();    // Get the next argument from the SerialCommand object buffer
@@ -324,6 +366,20 @@ void rotateWaist(){
   } 
   else {
     Serial.println("No position supplied.  Please enter a number between 0 - 3150"); 
+  }
+}
+
+void getWaistPos(){
+  curPosition = stepperPosition;
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("SHOULDER ROTATE POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void resetHead(){
+  for(int i=0; i<NUM_SERVOS; i++){
+      dynaControl.resetServoTorqueLimit(servoID[i], MAX_TORQUE);
   }
 }
 
@@ -361,6 +417,30 @@ void pivotShoulder(){
     Serial.println("No position supplied.  Please enter a number between 0 - 2048"); 
   }
 }
+
+void getShoulderRotatePos(){
+  curPosition = stepperPosition;
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("SHOULDER ROTATE POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void getShoulderPivotPos(){
+  curPosition = dynaControl.getServoPosition(SHOULDER_L);
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("SHOULDER PIVOT POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void resetShoulder(){
+//  for(int i=0; i<2; i++){
+//      dynaControl.resetServoTorqueLimit(servoID[i], MAX_TORQUE);
+//  }
+  dynaControl.resetServoTorqueLimit(SHOULDER_L, MAX_TORQUE);
+  dynaControl.resetServoTorqueLimit(SHOULDER_R, MAX_TORQUE);
+}
 #endif
 
 #ifdef FULL_ARM
@@ -395,6 +475,28 @@ void pivotElbow(){
   } 
   else {
     Serial.println("No position supplied.  Please enter a number between 0 - 2048"); 
+  }
+}
+
+void getElbowRotatePos(){
+  curPosition = dynaControl.getServoPosition(ELBOW_R);
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("ELBOW ROTATE POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void getElbowPivotPos(){
+  curPosition = dynaControl.getServoPosition(ELBOW_P);
+  #ifdef I2CCOMMANDDEBUG
+    Serial.print("ELBOW PIVOT POS: ");
+    Serial.println(curPosition);
+  #endif
+}
+
+void resetElbow(){
+  for(int i=2; i<NUM_SERVOS; i++){
+      dynaControl.resetServoTorqueLimit(servoID[i], MAX_TORQUE);
   }
 }
 #endif
@@ -569,7 +671,18 @@ void SayHello()
     Serial.println("Hello, whoever you are"); 
   }
 }
+void respondEvent(){
+  byte posBuffer[2];
 
+  posBuffer[0] = curPosition >> 8;
+  posBuffer[1] = curPosition & 255;
+  Wire.write(posBuffer, 2);
+
+  #ifdef I2CCOMMANDDEBUG
+  Serial.print(posBuffer[0]);
+  Serial.println(posBuffer[1]);
+  #endif
+}
 void receiveEvent(int howMany) 
 {
  // If we're using the Hardware port, check it.   Otherwise check the user-created SoftwareSerial Port

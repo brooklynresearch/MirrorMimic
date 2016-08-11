@@ -7,7 +7,9 @@
 #include <OSCBoards.h>
 #include <Wire.h>
 
-#define DEBUG         
+#define DEBUG        
+
+#define I2C_ADDRESS     5
 
 #define HEAD_ADDRESS    6
 #define LEFT_ADDRESS    7
@@ -16,13 +18,14 @@
 
 int motorCommAddress[3] = {HEAD_ADDRESS, LEFT_ADDRESS, RIGHT_ADDRESS};
 int i2cAddress = 0;
+#define POS_BYTES 20
 //String motorAddress;
 
 EthernetUDP Udp;
 
 //the Arduino's IP
 IPAddress ip(192, 168, 8, 123);
-IPAddress outIp(192, 168, 8, 100);
+IPAddress outIp(192, 168, 8, 105);
 
 //port numbers
 const unsigned int inPort = 12345;
@@ -88,7 +91,7 @@ void setup() {
   delay(1000);
 
   Serial.println(F("====================================================================="));
-  Serial.println(F("TONI DOVE :: OSC TO SERIAL"));
+  Serial.println(F("TONI DOVE :: OSC TO I2C"));
   Serial.println(F("====================================================================="));
 
   #ifdef DEBUG
@@ -118,13 +121,14 @@ void loop(){
         {
             newMes.route("/move", routePositionMessage);
             newMes.route("/get", routeGetMessage);
+            newMes.route("/reset", routeResetMessage);
         }     
     }
 }
 
 void routeGetMessage(OSCMessage &msg, int addrOffset){
       int pinMatched;
-      char motorAddress[6];
+      String motorAddress;
       
       //Test OSC Routing
       pinMatched = msg.match("/test", addrOffset);
@@ -136,10 +140,61 @@ void routeGetMessage(OSCMessage &msg, int addrOffset){
       if(pinMatched){
         getAllPositions();
       }
+      
+      pinMatched = msg.match("/head", addrOffset);
+      if(pinMatched){
+        i2cAddress = HEAD_ADDRESS;
+        if (msg.fullMatch("/rotate", pinMatched+addrOffset)){
+          motorAddress = "HRPOS";
+        } else if (msg.fullMatch("/pivot", pinMatched+addrOffset)){
+          motorAddress = "HPPOS";
+        }
+      }
+      
+      pinMatched = msg.match("/waist", addrOffset);
+      if(pinMatched){
+        i2cAddress = HEAD_ADDRESS;
+        if (msg.fullMatch("/rotate", pinMatched+addrOffset)){
+          motorAddress = "W_POS";
+        } else if (msg.fullMatch("/pivot", pinMatched+addrOffset)){
+          motorAddress = "W_POS";
+        }
+      }
+
+      pinMatched = msg.match("/left", addrOffset);
+      if(pinMatched){
+        i2cAddress = LEFT_ADDRESS;
+        if (msg.fullMatch("/shoulder/rotate", pinMatched+addrOffset)){
+          motorAddress = "SRPOS";
+        } else if (msg.fullMatch("/shoulder/pivot", pinMatched+addrOffset)){
+          motorAddress = "SPPOS";
+        } else if (msg.fullMatch("/elbow/rotate", pinMatched+addrOffset)){
+          motorAddress = "ERPOS";
+        } else if (msg.fullMatch("/elbow/pivot", pinMatched+addrOffset)){
+          motorAddress = "EPPOS";
+        }
+      }
+
+      pinMatched = msg.match("/right", addrOffset);
+      if(pinMatched){
+        i2cAddress = RIGHT_ADDRESS;
+        if (msg.fullMatch("/shoulder/rotate", pinMatched+addrOffset)){
+          motorAddress = "SRPOS";
+        } else if (msg.fullMatch("/shoulder/pivot", pinMatched+addrOffset)){
+          motorAddress = "SPPOS";
+        } 
+      }
+    
+      // DEBUG message for what route was sent
+      #ifdef DEBUG
+      Serial.print("Message Sent: ");Serial.println(motorAddress);
+      #endif
+      getPosition(msg, addrOffset, i2cAddress, motorAddress);
 
       #ifdef DEBUG
       Serial.print("Message Sent: ");Serial.println(motorAddress);
       #endif
+      
 }
 
 void routePositionMessage(OSCMessage &msg, int addrOffset){
@@ -202,6 +257,42 @@ void routePositionMessage(OSCMessage &msg, int addrOffset){
       moveToPosition(msg, addrOffset, i2cAddress, motorAddress);
 }
 
+void routeResetMessage(OSCMessage &msg, int addrOffset){
+  int pinMatched;
+  String motorAddress;
+  //Test OSC Routing
+  pinMatched = msg.match("/test", addrOffset);
+  if(pinMatched){
+    Serial.println("OSC \"/reset\" Comms Functional");
+  }
+  pinMatched = msg.match("/head", addrOffset);
+  if(pinMatched){
+    i2cAddress = HEAD_ADDRESS;
+    motorAddress = "H_RST";
+  }
+
+  pinMatched = msg.match("/left", addrOffset);
+  if(pinMatched){
+    i2cAddress = LEFT_ADDRESS;
+    if (msg.fullMatch("/shoulder", pinMatched+addrOffset)){
+      motorAddress = "S_RST";
+    } else if (msg.fullMatch("/elbow", pinMatched+addrOffset)){
+      motorAddress = "E_RST";
+    }
+  }
+  pinMatched = msg.match("/right", addrOffset);
+  if(pinMatched){
+    i2cAddress = RIGHT_ADDRESS;
+    motorAddress = "E_RST";
+  }
+
+  // DEBUG message for what route was sent
+  #ifdef DEBUG
+  Serial.print("Message Sent: ");Serial.println(motorAddress);
+  #endif
+  resetServo(msg, addrOffset, i2cAddress, motorAddress);
+}
+
 void getAllPositions(){
   char positionString[128];
   char positionAddr[10] = "/motorPos";
@@ -212,6 +303,7 @@ void getAllPositions(){
     Wire.write("GET_POS ");
     Wire.write("\n\r");
     Wire.endTransmission();
+    Wire.requestFrom(motorCommAddress[i], POS_BYTES);
     while(Wire.available() > 0){
       char c = Wire.read();
       positionString[p] = c;
@@ -237,7 +329,69 @@ void sendOSCString(char* outgoingAddr, char* argument){
   msg.empty();
 }
 
+void resetServo(OSCMessage &msg, int addrOffset, int i2cAddr, String tmpMotor){
+  char motor[6];
+  strcpy(motor, tmpMotor.c_str());
 
+  #ifdef DEBUG
+  Serial.print("Requesting Reset from "); Serial.println(motor);
+  #endif
+
+  Wire.beginTransmission(i2cAddr); 
+  for(int i=0; i<strlen(motor); i++){
+    Wire.write(motor[i]);
+  }
+
+  Wire.write("\n\r");
+  Wire.endTransmission();
+  
+}
+
+void getPosition(OSCMessage &msg, int addrOffset, int i2cAddr, String tmpMotor){
+    char motor[6];                   // Create a char array
+    strcpy(motor, tmpMotor.c_str()); // Covert String to char to be able to pass it through I2C.
+
+    #ifdef DEBUG
+    Serial.print("Reqeusting Position from ");Serial.println(motor);
+    #endif
+
+    int receivedValue;
+    int bytesAvailable;
+    for(int i=0; i<2; i++){
+      Wire.beginTransmission(i2cAddr); 
+      for(int i=0; i<strlen(motor); i++){
+        Wire.write(motor[i]);
+      }
+  
+      Wire.write("\n\r");
+      
+      delay(10);
+      
+      
+      bytesAvailable = Wire.requestFrom(i2cAddr, (byte)2);
+      if(bytesAvailable == 2)
+      {
+        receivedValue = Wire.read() << 8 | Wire.read(); // combine two bytes into integer
+      }
+      else
+      {
+        Serial.print("ERROR: Unexpected number of bytes received: ");
+        Serial.println(bytesAvailable);
+      }
+  
+  
+      Wire.endTransmission();
+      delay(20);
+    }
+    Serial.print("Value: ");
+    Serial.println(receivedValue);
+
+    char charPosition[4];
+    sprintf(charPosition,"%d", receivedValue);
+    sendOSCString(motor, charPosition); 
+    
+    //delay(500);
+}
 
 void moveToPosition(OSCMessage &msg, int addrOffset, int i2cAddr, String tmpMotor){
   int nextPosition = 0;
